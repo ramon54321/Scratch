@@ -1,0 +1,297 @@
+<style>
+body {
+	margin: 0;
+	user-select: none;
+}
+.info {
+	position: absolute;
+	left: 10px;
+	top: 10px;
+}
+</style>
+<body>
+	<div id="totalNutrition" class="info"></div>
+	<div id="totalFishMass" class="info" style="top: 30px;"></div>
+	<div id="aveFishMass" class="info" style="top: 50px;"></div>
+	<div id="totalFish" class="info" style="top: 70px;"></div>
+</body>
+<script src="https://cdn.jsdelivr.net/npm/lodash@4.17.4/lodash.min.js"></script>
+<script src="./js/three.js"></script>
+<script src="./js/gl-matrix.js"></script>
+<script>
+
+	let WIDTH = window.innerWidth;
+	let HEIGHT = window.innerHeight;
+	let ASPECT_RATIO = WIDTH / HEIGHT;
+	let CAMERA_SIZE = 10; // Vertical units
+	let UNIT_WIDTH = ASPECT_RATIO * CAMERA_SIZE;
+	let UNIT_HEIGHT = CAMERA_SIZE;
+
+	// Assets
+	let textures = {
+		tri: new THREE.TextureLoader().load("./sprites/tri.png"),
+		blob: new THREE.TextureLoader().load("./sprites/blob.png"),
+	}
+
+	// Scene
+	let scene = new THREE.Scene();
+	let camera = new THREE.OrthographicCamera(
+		(-ASPECT_RATIO/2) * CAMERA_SIZE,
+		(ASPECT_RATIO/2) * CAMERA_SIZE,
+		(1/2) * CAMERA_SIZE,
+		-(1/2) * CAMERA_SIZE, 0.1, 1000)
+	camera.position.z = 10
+
+	// Renderer
+	let renderer = new THREE.WebGLRenderer({antialias: true});
+	renderer.setSize(WIDTH, HEIGHT);
+	renderer.setClearColor(0xffffff, 1);
+	document.body.appendChild(renderer.domElement);
+
+	function distanceBetween(a, b) {
+		let dx = a.x - b.x;
+		let dy = a.y - b.y;
+		return Math.sqrt(dx * dx + dy * dy);
+	}
+
+	let food = {
+		foods: [],
+		spawn: function (fish, position, nutrition) {
+			let material = new THREE.SpriteMaterial({map: textures.blob, color: 0x3be84c});
+			let sprite = new THREE.Sprite(material);
+			sprite.scale.set(0.0, 0.0, 0.0);
+			if(!position) {
+				sprite.position.set(-UNIT_WIDTH/2 + Math.random() * UNIT_WIDTH,
+								-UNIT_HEIGHT/2 + Math.random() * UNIT_HEIGHT, 0);
+			} else {
+				sprite.position.set(position.x, position.y, 0);
+			}
+			scene.add(sprite);
+			let _food = {
+				fish: fish ? fish : null,
+				sprite: sprite,
+				nutrition: !nutrition ? 100 + Math.random() * 100 : nutrition,
+				tick: function () {
+					this.nutrition -= 0.005;
+					if(this.nutrition <= 0) {
+						food.remove(this);
+					}
+					this.sprite.scale.set(this.nutrition / 100, this.nutrition / 100, this.nutrition / 100)
+				}
+			}
+			this.foods.push(_food);
+		},
+		remove: function (food) {
+			_.remove(this.foods, (_food) => {return _food == food})
+			scene.remove(food.sprite);
+		}
+	}
+
+	for (var i = 0; i < 0; i++) {
+		food.spawn();
+	}
+
+	let fishes = []
+	function removeFish(fish) {
+		food.spawn(fish, fish.sprite.position, fish._mass);
+		_.remove(fishes, (_fish) => {return _fish == fish})
+		scene.remove(fish.sprite);
+		scene.remove(fish.leftEyeSprite);
+		scene.remove(fish.rightEyeSprite);
+	}
+	function spawnFish(parentFish, mass, options) {
+		let material = new THREE.SpriteMaterial({map: textures.tri, color: 0x5fd48d});
+		let sprite = new THREE.Sprite(material);
+		sprite.scale.set(0.2, 0.2, 0.2);
+		if(!parentFish) {
+			sprite.position.set(-UNIT_WIDTH/2 + Math.random() * UNIT_WIDTH,
+								-UNIT_HEIGHT/2 + Math.random() * UNIT_HEIGHT, 0);
+		} else {
+			sprite.position.set(parentFish.sprite.position.x, parentFish.sprite.position.y, 0);
+		}
+
+		scene.add(sprite);
+
+		let materialEye = new THREE.SpriteMaterial({map: textures.blob, color: 0xb2dff2});
+		let spriteEyeLeft = new THREE.Sprite(materialEye);
+		let spriteEyeRight = new THREE.Sprite(materialEye);
+		spriteEyeLeft.scale.set(0.03, 0.03, 0.03);
+		spriteEyeRight.scale.set(0.03, 0.03, 0.03);
+		scene.add(spriteEyeLeft);
+		scene.add(spriteEyeRight);
+
+		let type = (_.get(options, "type") ? options.type : Math.random()) < 0.8 ? 0 : 1;
+		console.log("type: " + type);
+
+		let fish = {
+			sprite: sprite,
+			leftEyeSprite: spriteEyeLeft,
+			rightEyeSprite: spriteEyeRight,
+			_type: type,
+			_typeGCol: type == 0 ? 0.1 : 0.7,
+			_rotation: Math.random() * 360,
+			_mass: !mass ? 30 + Math.random() * 30 : mass,
+			_speed: 8,
+			_nextFoodDropTime: 0,
+			_targetSpeed: 8,
+			_baseSpeed: 8,
+			rotate: function (amount) {
+				this._rotation += amount;
+				this.sprite.material.rotation = (Math.PI / 180) * this._rotation;
+			},
+			moveForward: function (amount) {
+				this.sprite.position.x -= Math.sin(this.sprite.material.rotation) * amount;
+				this.sprite.position.y += Math.cos(this.sprite.material.rotation) * amount;
+			},
+			tick: function() {
+				if(this._mass < 5) {
+					removeFish(this);
+				}
+
+				// drop food
+				let now = Date.now();
+				if(now > this._nextFoodDropTime) {
+					let gap = 10000 + Math.random() * 10000;
+					this._nextFoodDropTime = now + gap;
+					let nutrients = gap / 8000;
+					this._mass -= nutrients;
+					food.spawn(this, this.sprite.position, nutrients);
+				}
+				this._baseSpeed = this._mass / 30 + 2;
+				this.sprite.material.color.setRGB(1 - (this._mass / 90), this._typeGCol, (this._mass / 150));
+				this.sprite.scale.set(0.05 + (this._mass / 1000), 0.05 + (this._mass / 1000), 0.05 + (this._mass / 1000));
+
+				let theta = this.sprite.material.rotation;
+				let offset = {x: 0.1, y: 0.2}
+				let eyeLeft = {
+					x: Math.cos(theta) * -offset.x - Math.sin(theta) * offset.y + this.sprite.position.x,
+					y: Math.sin(theta) * -offset.x + Math.cos(theta) * offset.y + this.sprite.position.y
+				}
+				let eyeRight = {
+					x: Math.cos(theta) * offset.x - Math.sin(theta) * offset.y + this.sprite.position.x,
+					y: Math.sin(theta) * offset.x + Math.cos(theta) * offset.y + this.sprite.position.y
+				}
+				this.leftEyeSprite.position.x = eyeLeft.x;
+				this.leftEyeSprite.position.y = eyeLeft.y;
+				this.rightEyeSprite.position.x = eyeRight.x;
+				this.rightEyeSprite.position.y = eyeRight.y;
+
+				// Get closest food
+				if(food.foods[0]) {
+					let closestFood = food.foods[0];
+					let closestDist = distanceBetween(food.foods[0].sprite.position, this.sprite.position)
+					for (var i = 0; i < food.foods.length; i++) {
+						let dist = distanceBetween(food.foods[i].sprite.position, this.sprite.position);
+						dist /= 1 + (food.foods[i].nutrition / 200)
+						if(dist < closestDist) {
+							closestFood = food.foods[i];
+							closestDist = dist;
+						}
+					}
+
+					let distLeft = distanceBetween(this.leftEyeSprite.position, closestFood.sprite.position);
+					let distRight = distanceBetween(this.rightEyeSprite.position, closestFood.sprite.position);
+
+					if(distLeft > distRight) {
+						this.rotate(-3 + Math.random() * 3);
+					} else {
+						this.rotate(0 + Math.random() * 3);
+					}
+
+					// run to far food
+					if (closestDist > 0.4) {
+						this._targetSpeed = this._baseSpeed * 2
+					} else {
+						this._targetSpeed = this._baseSpeed * 0.8
+					}
+
+					if (this._speed < this._targetSpeed) {
+						this._speed += 0.1;
+					} else {
+						this._speed -= 0.1;
+					}
+
+					// eat food
+					if (closestDist < 0.1 && closestFood.fish != this) {
+						closestFood.nutrition -= 0.6;
+						this._mass += 0.6;
+					}
+				}
+
+				// reproduce
+				if(this._mass > 80) {
+					console.log("reproducing");
+					let aMass = 16 + Math.random() * 8;
+					let bMass = 16 + Math.random() * 8;
+					this._mass -= aMass + bMass;
+					spawnFish(this, aMass, {type: Math.random() < 0.8 ? this._type : (this._type == 0 ? 1 : 0)});
+					spawnFish(this, bMass, {type: Math.random() < 0.8 ? this._type : (this._type == 0 ? 1 : 0)});
+				}
+
+
+
+				this.rotate(-5 + Math.random() * 10);
+				this.moveForward(this._speed / 1000);
+
+				if(this.sprite.position.x < -UNIT_WIDTH/2) {
+					this.sprite.position.x = UNIT_WIDTH/2;
+				}
+				if(this.sprite.position.x > UNIT_WIDTH/2) {
+					this.sprite.position.x = -UNIT_WIDTH/2;
+				}
+				if(this.sprite.position.y < -UNIT_HEIGHT/2) {
+					this.sprite.position.y = UNIT_HEIGHT/2;
+				}
+				if(this.sprite.position.y > UNIT_HEIGHT/2) {
+					this.sprite.position.y = -UNIT_HEIGHT/2;
+				}
+			}
+		}
+		fishes.push(fish);
+	}
+	for (var i = 0; i < 1; i++) {
+		spawnFish();
+	}
+
+	// Render loop
+	let animate = function () {
+		requestAnimationFrame(animate);
+
+		for (var i = 0; i < fishes.length; i++) {
+			fishes[i].tick();
+		}
+
+		for (var i = 0; i < food.foods.length; i++) {
+			food.foods[i].tick();
+		}
+
+		renderer.render(scene, camera);
+	};
+	animate();
+
+	setInterval(() => {
+		let total = 0;
+		for (var i = 0; i < fishes.length; i++) {
+			total += fishes[i]._mass;
+		}
+		document.getElementById("totalFishMass").innerText = "Total Fish Mass: " + total.toFixed(0);
+		document.getElementById("aveFishMass").innerText = "Average Fish Mass: " + (total / fishes.length).toFixed(2);
+		for (var i = 0; i < food.foods.length; i++) {
+			total += food.foods[i].nutrition;
+		}
+		document.getElementById("totalNutrition").innerText = "Total Nutrition: " + total.toFixed(0);
+		document.getElementById("totalFish").innerText = "Total Fish Count: " + fishes.length;
+	}, 500);
+
+	renderer.domElement.addEventListener('click', function(evt) {
+		let rect = renderer.domElement.getBoundingClientRect();
+		let pos = {
+			x: (((evt.clientX - rect.left) / rect.width) * UNIT_WIDTH) - UNIT_WIDTH/2,
+			y: (((rect.bottom - evt.clientY) / rect.height) * UNIT_HEIGHT) - UNIT_HEIGHT/2
+	    };
+
+		food.spawn(null, pos, 5);
+	}, false);
+
+
+</script>

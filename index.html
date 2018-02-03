@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Scratch</title>
+		<script src="https://code.jquery.com/jquery-3.2.1.min.js" integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4=" crossorigin="anonymous"></script>
+		<link rel="stylesheet" type="text/css" href="./main.css">
+	</head>
+	<body>
+		<div id="viewMain" class="hidden view-container">
+			<div class="view">
+				<div id="content">
+
+				</div>
+			</div>
+		</div>
+
+		<script>
+			function fadeIn(element, duration) {
+				$(element).removeClass("hidden");
+				$(element).addClass("shown");
+				$(element).css("opacity", 0);
+				$(element).animate({opacity: "1"}, duration);
+			}
+
+			function fadeOut(element, duration) {
+				$(element).css("opacity", 1);
+				$(element).animate({opacity: "0"}, duration, "swing", function () {
+					$(element).removeClass("shown");
+					$(element).addClass("hidden");
+				});
+			}
+			fadeIn("#viewMain", 1000);
+
+			setTimeout(function() {
+				fadeOut("#viewMain", 1000);
+			}, 4000)
+
+			//$("#viewMain").fadeIn(1000);
+		</script>
+	</body>
+</html>
