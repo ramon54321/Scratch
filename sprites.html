@@ -73,10 +73,13 @@ body {
 				nutrition: !nutrition ? 100 + Math.random() * 100 : nutrition,
 				tick: function () {
 					this.nutrition -= 0.005;
+					this.checkNutrition();
+					this.sprite.scale.set(this.nutrition / 100, this.nutrition / 100, this.nutrition / 100)
+				},
+				checkNutrition: function () {
 					if(this.nutrition <= 0) {
 						food.remove(this);
 					}
-					this.sprite.scale.set(this.nutrition / 100, this.nutrition / 100, this.nutrition / 100)
 				}
 			}
 			this.foods.push(_food);
@@ -213,8 +216,10 @@ body {
 
 					// eat food
 					if (closestDist < 0.1 && closestFood.fish != this) {
-						closestFood.nutrition -= 0.6;
-						this._mass += 0.6;
+						let eadableNutrition = Math.min(0.6, closestFood.nutrition);
+						closestFood.nutrition -= eadableNutrition;
+						this._mass += eadableNutrition;
+						closestFood.checkNutrition();
 					}
 				}
 
