@@ -35,6 +35,7 @@ body {
 	// Assets
 	let textures = {
 		tri: new THREE.TextureLoader().load("./sprites/tri.png"),
+		drop: new THREE.TextureLoader().load("./sprites/drop.png"),
 		blob: new THREE.TextureLoader().load("./sprites/blob.png"),
 	}
 
@@ -101,7 +102,14 @@ body {
 		food.spawn();
 	}
 
+
+
 	let fishes = []
+	let fishTypeMap = {}
+	fishTypeMap[0] = {name: "Maroon Darwin", reproductionMinMass: 80, eatRate: 0.35};
+	fishTypeMap[1] = {name: "Aqua Darwin", reproductionMinMass: 80, eatRate: 0.45};
+	fishTypeMap[2] = {name: "Pink Egg Fish", reproductionMinMass: 30, eatRate: 0.05};
+
 	function removeFish(fish) {
 		food.spawn(fish, fish.sprite.position, fish._mass / 6);
 		_.remove(fishes, (_fish) => {return _fish == fish})
@@ -109,15 +117,42 @@ body {
 		scene.remove(fish.leftEyeSprite);
 		scene.remove(fish.rightEyeSprite);
 	}
-	function spawnFish(parentFish, mass, options) {
-		let material = new THREE.SpriteMaterial({map: textures.tri, color: 0x5fd48d});
+	function spawnFish(parentFish, _mass, options, parentPlant) {
+		let type = _.has(options, "type") ? options.type : (Math.random() < 0.8 ? 0 : 1);
+		console.log("type: " + type);
+
+		let speed = 8;
+		let material //= new THREE.SpriteMaterial({map: textures.tri, color: 0x5fd48d});
+		let mass;
+		switch (type) {
+			case 0: // Maroon darwin
+				material = new THREE.SpriteMaterial({map: textures.tri});
+				speed = 1.2;
+				mass = !_mass ? 30 + Math.random() * 30 : mass;
+				break;
+			case 1: // Aqua darwin
+				material = new THREE.SpriteMaterial({map: textures.tri});
+				speed = 1.4;
+				mass = !_mass ? 30 + Math.random() * 30 : mass;
+				break;
+			case 2: // Pink Egg fish
+				material = new THREE.SpriteMaterial({map: textures.drop});
+				speed = 0.6;
+				mass = !_mass ? 5 + Math.random() * 10 : mass;
+				break;
+			default:
+		}
+
 		let sprite = new THREE.Sprite(material);
 		sprite.scale.set(0.2, 0.2, 0.2);
-		if(!parentFish) {
+
+		if (parentFish) {
+			sprite.position.set(parentFish.sprite.position.x, parentFish.sprite.position.y, 0);
+		} else if (parentPlant) {
+			sprite.position.set(parentPlant.nodes[0].sprite.position.x, parentPlant.nodes[0].sprite.position.y, 0);
+		} else {
 			sprite.position.set(-UNIT_WIDTH/2 + Math.random() * UNIT_WIDTH,
 								-UNIT_HEIGHT/2 + Math.random() * UNIT_HEIGHT, 0);
-		} else {
-			sprite.position.set(parentFish.sprite.position.x, parentFish.sprite.position.y, 0);
 		}
 
 		scene.add(sprite);
@@ -130,21 +165,21 @@ body {
 		scene.add(spriteEyeLeft);
 		scene.add(spriteEyeRight);
 
-		let type = (_.get(options, "type") ? options.type : Math.random()) < 0.8 ? 0 : 1;
-		console.log("type: " + type);
+
 
 		let fish = {
 			sprite: sprite,
 			leftEyeSprite: spriteEyeLeft,
 			rightEyeSprite: spriteEyeRight,
+			geneset: null,
 			_type: type,
-			_typeGCol: type == 0 ? 0.1 : 0.7,
 			_rotation: Math.random() * 360,
 			_mass: !mass ? 30 + Math.random() * 30 : mass,
-			_speed: 8,
+			_speed: speed,
 			_nextFoodDropTime: 0,
 			_targetSpeed: 8,
-			_baseSpeed: 8,
+			_baseSpeed: speed,
+			_massSpeedBoost: 0,
 			_moodSpeed: 0,
 			_age: -1,
 			_nextAgeTime: 0,
@@ -156,6 +191,13 @@ body {
 			moveForward: function (amount) {
 				this.sprite.position.x -= Math.sin(this.sprite.material.rotation) * amount;
 				this.sprite.position.y += Math.cos(this.sprite.material.rotation) * amount;
+			},
+			ageUp: function () {
+				// ageUp
+				this._age++;
+				if(this._age >= this._deathAge) {
+					removeFish(this);
+				}
 			},
 			tick: function() {
 				if(this._mass < 5) {
@@ -175,16 +217,46 @@ body {
 				// age
 				if(now > this._nextAgeTime) {
 					this._nextAgeTime = now + 6000;
-					this._age++;
-
-					if(this._age >= this._deathAge) {
-						removeFish(this);
-					}
+					this.ageUp();
 				}
 
-				this._baseSpeed = this._mass / 30 + 2;
-				this.sprite.material.color.setRGB(1 - (this._mass / 90), this._typeGCol, (this._mass / 150));
-				this.sprite.scale.set(0.05 + (this._mass / 1000), 0.05 + (this._mass / 1000), 0.05 + (this._mass / 1000));
+				// set color
+				let r, g, b
+				switch (this._type) {
+					case 0: // Maroon darwin
+						b = 0.2 + (this._mass - 30) * 0.008
+						this.sprite.material.color.setRGB(0.5, 0.07, b);
+						break;
+					case 1: // Aqua darwin
+						r = 0.8 - (this._mass - 30) * 0.008
+						b = 0.17 + (this._mass - 30) * 0.0086
+						this.sprite.material.color.setRGB(r, 0.92, b);
+						// old color- this.sprite.material.color.setRGB(1 - (this._mass / 90), this._typeGCol, (this._mass / 150));
+						break;
+					case 2: // Pink Egg fish
+						g = 0.6 - (this._mass - 30) * 0.005
+						this.sprite.material.color.setRGB(0.95, g, 0.9);
+						break;
+					default:
+				}
+
+				// set size
+				switch (this._type) {
+					case 0: // Maroon darwin
+						this.sprite.scale.set(0.05 + (this._mass / 1000), 0.05 + (this._mass / 1000), 0.05 + (this._mass / 1000));
+						break;
+					case 1: // Aqua darwin
+						this.sprite.scale.set(0.05 + (this._mass / 1200), 0.05 + (this._mass / 1200), 0.05 + (this._mass / 1200));
+						break;
+					case 2: // Pink Egg fish
+						this.sprite.scale.set(0.015 + (this._mass / 3500), 0.015 + (this._mass / 3500), 0.015 + (this._mass / 3500));
+						break;
+					default:
+						this.sprite.scale.set(0.05 + (this._mass / 1000), 0.05 + (this._mass / 1000), 0.05 + (this._mass / 1000));
+				}
+
+
+				this._massSpeedBoost = this._mass / 60;
 
 				let theta = this.sprite.material.rotation;
 				let offset = {x: 0.1, y: 0.2}
@@ -226,18 +298,19 @@ body {
 						}
 
 						// run to far food
-						if (closestDist > 0.4) {
-							this._targetSpeed = this._baseSpeed * 2
+						if (closestDist > 0.25) {
+							this._targetSpeed = this._baseSpeed * 2.2
 						} else {
 							this._targetSpeed = this._baseSpeed * 0.8
 						}
 
 						// eat food
 						if (closestDist < 0.1 && closestFood.fish != this) {
-							let eadableNutrition = Math.min(0.6, closestFood.nutrition);
+							let eadableNutrition = Math.min(fishTypeMap[this._type].eatRate, closestFood.nutrition);
 							closestFood.nutrition -= eadableNutrition;
 							if(closestFood.plant) {
 								closestFood.plant.nutrients -= eadableNutrition;
+								closestFood.plant.usage += eadableNutrition;
 							}
 							this._mass += eadableNutrition;
 							closestFood.checkNutrition();
@@ -246,15 +319,33 @@ body {
 				}
 
 				// reproduce
-				if(this._mass > 80) {
-					// attempt reproduction 20% chance
+				if(this._mass > fishTypeMap[this._type].reproductionMinMass) {
+					// attempt reproduction 40% chance
 					if(Math.random() < 0.4) {
 						console.log("reproducing");
 						let aMass = 16 + Math.random() * 8;
 						let bMass = 16 + Math.random() * 8;
 						this._mass -= aMass + bMass;
-						spawnFish(this, aMass, {type: Math.random() < 0.8 ? this._type : (this._type == 0 ? 1 : 0)});
-						spawnFish(this, bMass, {type: Math.random() < 0.8 ? this._type : (this._type == 0 ? 1 : 0)});
+						let aType, bType;
+
+						switch (this._type) {
+							case 0: // Maroon darwin
+								aType = Math.random() < 0.95 ? 0 : 1;
+								bType = Math.random() < 0.95 ? 0 : 1;
+								break;
+							case 1: // Aqua darwin
+								aType = Math.random() < 0.65 ? 1 : 0;
+								bType = Math.random() < 0.65 ? 1 : 0;
+								break;
+							case 2: // Pink egg fish
+								aType = Math.random() < 0.999 ? 2 : 0;
+								bType = Math.random() < 0.999 ? 2 : 0;
+								break;
+							default:
+						}
+
+						spawnFish(this, aMass, {type: aType});
+						spawnFish(this, bMass, {type: bType});
 					} else {
 						let failedAttemptNutritionUsage = 35 + Math.random() * 25;
 						this._mass -= failedAttemptNutritionUsage;
@@ -264,10 +355,22 @@ body {
 
 				// change mood speed
 				if(Math.random() < 0.1) {
-					this._moodSpeed = -7 + Math.random() * 14;
+					switch (this._type) {
+						case 0: // Maroon darwin
+							this._moodSpeed = -4 + Math.random() * 8;
+							break;
+						case 1: // Aqua darwin
+							this._moodSpeed = -5 + Math.random() * 10;
+							break;
+						case 2: // Pink Egg fish
+							this._moodSpeed = -0.6 + Math.random() * 1.2;
+							break;
+						default:
+							this._moodSpeed = -5 + Math.random() * 10;
+					}
 				}
 
-				let totalTargetSpeed = this._targetSpeed + this._moodSpeed;
+				let totalTargetSpeed = this._targetSpeed + this._moodSpeed + this._massSpeedBoost;
 
 				let rotateRandom = -totalTargetSpeed/2 + Math.random() * totalTargetSpeed;
 
@@ -321,6 +424,8 @@ body {
 			this.glowSize = 1;
 			this.oxygenProduction = 1;
 
+			this.usage = 0;
+			this.foodSpawnLevel = 2;
 
 			plants.push(this);
 		}
@@ -342,15 +447,46 @@ body {
 			}
 
 			// spawn food for each node
-			for (var i = 0; i < this.nodes.length; i++) {
-				let nutrientsToSpawn = 0.5 + Math.random() * 2;
-				if(Math.random() < 0.035 && this.nutrients > nutrientsToSpawn) {
-					let lastPos = this.nodes[i].sprite.position;
-					let newPos = {x: lastPos.x - 0.2 + Math.random() * 0.4, y: lastPos.y - 0.2 + Math.random() * 0.4 }
-					food.spawn(null, newPos, nutrientsToSpawn, this);
+			if (this.foodSpawnLevel > 10) {
+				for (var i = 0; i < this.nodes.length; i++) {
+					let nutrientsToSpawn = 0.5 + Math.random() * 2;
+					if (this.nutrients < 0) {
+						this.foodSpawnLevel = 0;
+						break;
+					}
+					if(Math.random() < 0.035 && this.nutrients > nutrientsToSpawn) {
+						let lastPos = this.nodes[i].sprite.position;
+						let newPos = {x: lastPos.x - 0.2 + Math.random() * 0.4, y: lastPos.y - 0.2 + Math.random() * 0.4 }
+						food.spawn(null, newPos, nutrientsToSpawn, this);
+					}
 				}
 			}
 
+
+
+		}
+
+		slowTick() {
+			// compute usage
+			this.usage -= 2.5;
+			if (this.usage < 0) {
+				this.usage = 0;
+			}
+
+			if (this.usage > 8 * this.nodes.length && this.nodes.length < 34) {
+				console.log("Plant attempting to grow new pod.");
+				if (Math.random() < 0.02) {
+					this.createNode();
+				}
+			}
+
+			// manage can spawn food
+			this.foodSpawnLevel += 0.25;
+
+			// spawn egg fish
+			if(this.foodSpawnLevel > 20 && Math.random() < 0.05) {
+				spawnFish(null, 15, {type: 2}, this);
+			}
 		}
 
 		createNode(options) {
@@ -376,10 +512,15 @@ body {
 				sprite: sprite
 			}
 			this.nodes.push(node);
-			this.geometry.vertices.push(
-				new THREE.Vector3(sprite.position.x, sprite.position.y, 0)
-			);
-			this.geometry.verticesNeedUpdate = true;
+			this.geometry = new THREE.Geometry();
+			for (var i = 0; i < this.nodes.length; i++) {
+				this.geometry.vertices.push(
+					new THREE.Vector3(this.nodes[i].sprite.position.x, this.nodes[i].sprite.position.y, 0)
+				);
+			}
+			scene.remove(this.line);
+			this.line = new THREE.Line(this.geometry, this.material);
+			scene.add(this.line);
 			this.nutrients += 5;
 		}
 	}
@@ -428,6 +569,12 @@ body {
 	};
 	animate();
 
+	setInterval(function () {
+		for (var i = 0; i < plants.length; i++) {
+			plants[i].slowTick();
+		}
+	}, 500);
+
 	var keys = {};
 	var handleMode = 0;
 	window.onkeyup = function(e) { keys[e.keyCode] = false; }
@@ -461,7 +608,11 @@ body {
 				}
 			}
 
-			handle.innerText = "Plant Total Nutrients: " + closestPlant.nutrients.toFixed(0);
+			handle.innerHTML = "<h5>Closest Plant:</h5>" +
+			"<li> Nutrients: " + closestPlant.nutrients.toFixed(0) + "</li>" +
+			"<li> Food Spawn Level: " + closestPlant.foodSpawnLevel.toFixed(0) + "</li>" +
+			"<li> Usage: " + closestPlant.usage.toFixed(0) + "</li>" +
+			"<li> Growth: " + closestPlant.nodes.length + "</li>";
 			handle.style.left = mouseEvt.clientX + 15;
 			handle.style.top = mouseEvt.clientY;
 
@@ -484,7 +635,14 @@ body {
 				}
 			}
 
-			handle.innerHTML = "<h5>Closest Fish:</h5>" + closestFish._age.toFixed(0);
+			handle.innerHTML = "<h5>Closest Fish:</h5>" +
+			"<li> Type: " + fishTypeMap[closestFish._type].name + "</li>" +
+			"<li> Age: " + closestFish._age.toFixed(0) + "</li>" +
+			"<li> Mass: " + closestFish._mass.toFixed(0) + "</li>" +
+			"<li> _baseSpeed: " + closestFish._baseSpeed.toFixed(2) + "</li>" +
+			"<li> _moodSpeed: " + closestFish._moodSpeed.toFixed(2) + "</li>" +
+			"<li> _massSpeedBoost: " + closestFish._massSpeedBoost.toFixed(2) + "</li>" +
+			"<li> Speed: " + closestFish._speed.toFixed(0) + "</li>";
 			handle.style.left = mouseEvt.clientX + 15;
 			handle.style.top = mouseEvt.clientY;
 
